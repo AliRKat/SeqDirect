@@ -78,7 +78,6 @@ namespace SeqDirect.Core {
 
                 seq.AppendCallback(() => node.Execute(targets));
 
-                // ✅ Artık Params doğrudan ISeqNode üstünden erişiliyor
                 if (node.Params.waitForCompletion)
                     seq.AppendInterval(node.Duration + node.Params.delay);
             }
