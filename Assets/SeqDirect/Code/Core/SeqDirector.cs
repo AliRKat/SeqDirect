@@ -1,107 +1,110 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
+using SeqDirect.Core.Graph;
 #if DOTWEEN_PRESENT
 using DG.Tweening;
 #endif
 
 namespace SeqDirect.Core {
-    /// <summary>
-    /// Central runtime controller for SeqDirect.
-    /// Handles node creation, sequencing, and lifecycle control.
-    /// </summary>
-    [AddComponentMenu("SeqDirect/SeqDirector")]
+    [AddComponentMenu("SeqDirect/Seq Director")]
     public class SeqDirector : MonoBehaviour {
+        public static SeqDirector Instance { get; private set; }
+        private readonly Dictionary<string, SeqGraphAsset> _graphLibrary = new();
         private readonly List<ISeqNode> _activeNodes = new();
-        private static SeqDirector _instance;
 
-        public static SeqDirector Instance {
-            get {
-                if (_instance == null) {
-                    var go = new GameObject("[SeqDirector]");
-                    _instance = go.AddComponent<SeqDirector>();
-                    DontDestroyOnLoad(go);
-                }
-                return _instance;
+        private void Awake() {
+            if (Instance != null && Instance != this) {
+                Destroy(gameObject);
+                return;
             }
+            Instance = this;
+            LoadLibrary();
         }
 
-        /// <summary>
-        /// Plays a single node immediately with custom setup and targets.
-        /// </summary>
-        public T PlayNode<T>(Action<T> setup, List<Transform> targets) where T : ISeqNode {
-            var id = typeof(T).Name.Replace("SeqNode_", "");
-            if (SeqNodeRegistry.Create(id) is not T node) {
-                SeqLogger.Error($"Failed to create node of type {typeof(T).Name}");
-                return default;
+        private void LoadLibrary() {
+            _graphLibrary.Clear();
+            var graphs = Resources.LoadAll<SeqGraphAsset>("SeqGraphs");
+            foreach (var g in graphs) {
+                if (string.IsNullOrEmpty(g.graphId)) continue;
+                if (!_graphLibrary.ContainsKey(g.graphId))
+                    _graphLibrary.Add(g.graphId, g);
             }
-
-            setup?.Invoke(node);
-            node.Execute(targets);
-            _activeNodes.Add(node);
-            return node;
+            SeqLogger.Info($"[SeqDirector] Loaded {_graphLibrary.Count} graphs from Resources/SeqGraphs");
         }
 
-        /// <summary>
-        /// Plays a node by string id (e.g. "FadeOut") with optional setup.
-        /// </summary>
-        public ISeqNode PlayNode(string id, Action<ISeqNode> setup, List<Transform> targets) {
-            var node = SeqNodeRegistry.Create(id);
-            if (node == null) {
-                SeqLogger.Error($"No node found for id: {id}");
+#if DOTWEEN_PRESENT
+        public void Play(string graphId, List<Transform> targets) {
+            if (!_graphLibrary.TryGetValue(graphId, out var asset)) {
+                SeqLogger.Warn($"[SeqDirector] Graph '{graphId}' not found in library.");
+                return;
+            }
+            PlayGraph(asset, targets);
+        }
+
+        public Sequence PlayGraph(SeqGraphAsset asset, List<Transform> targets) {
+            if (asset == null) {
+                SeqLogger.Error("[SeqDirector] Null graph asset.");
                 return null;
             }
 
-            setup?.Invoke(node);
-            node.Execute(targets);
-            _activeNodes.Add(node);
-            return node;
-        }
-
-        /// <summary>
-        /// Plays a series of nodes in sequence (timeline).
-        /// Each node executes after the previous one finishes if waitForCompletion is true.
-        /// </summary>
-        public void PlaySequence(List<ISeqNode> nodes, List<Transform> targets) {
-#if !DOTWEEN_PRESENT
-            SeqLogger.DependencyMissing("DOTween", "SeqDirector Sequence");
-            return;
-#endif
-            if (nodes == null || nodes.Count == 0) {
-                SeqLogger.Warn("Tried to play an empty sequence.");
-                return;
-            }
-
             var seq = DOTween.Sequence();
-            foreach (var node in nodes) {
-                if (node == null) continue;
+            seq.SetAutoKill(false);
+            seq.Pause();
 
-                seq.AppendCallback(() => node.Execute(targets));
+            foreach (var nodeData in asset.nodes) {
+                var node = SeqNodeRegistry.Create(nodeData.nodeType.ToString());
+                if (node == null) {
+                    SeqLogger.Error($"[SeqDirector] Unknown node type: {nodeData.nodeType}");
+                    continue;
+                }
 
-                if (node.Params.waitForCompletion)
-                    seq.AppendInterval(node.Duration + node.Params.delay);
+                if (node is SeqNodeBase<SeqNodeParams> baseNode)
+                    baseNode.ApplyGraphOverrides(nodeData);
+
+                var nodeSeq = DOTween.Sequence();
+                foreach (var target in targets) {
+                    if (target == null) continue;
+                    var method = node.GetType().GetMethod("BuildTween",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (method == null) continue;
+
+                    var tw = method.Invoke(node, new object[] { target }) as Tween;
+                    if (tw != null)
+                        nodeSeq.Join(tw);
+                }
+
+                if (nodeData.waitForCompletion) {
+                    if (nodeData.delay > 0)
+                        seq.AppendInterval(nodeData.delay);
+                    seq.Append(nodeSeq);
+                } else {
+                    nodeSeq.SetDelay(nodeData.delay);
+                    seq.Join(nodeSeq);
+                }
+
+                _activeNodes.Add(node);
+                SeqLogger.NodeExecution($"{asset.graphId}/{nodeData.nodeType}", nodeData.duration);
             }
 
-            seq.OnComplete(() => SeqLogger.Info("Sequence complete."));
+            seq.Play();
+            SeqLogger.Info($"[SeqDirector] Playing Graph '{asset.graphId}' with {asset.nodes.Count} nodes.");
+            return seq;
         }
+#else
+        public void Play(string graphId, List<Transform> targets) {
+            SeqLogger.DependencyMissing("DOTween", "SeqDirector");
+        }
+        public void PlayGraph(SeqGraphAsset asset, List<Transform> targets) {
+            SeqLogger.DependencyMissing("DOTween", "SeqDirector");
+        }
+#endif
 
         public void StopAll() {
+#if DOTWEEN_PRESENT
             foreach (var n in _activeNodes)
                 n.Kill();
             _activeNodes.Clear();
-            SeqLogger.Info("All active nodes stopped.");
-        }
-
-        public void PauseAll() {
-            foreach (var n in _activeNodes)
-                n.Pause();
-            SeqLogger.Info("All active nodes paused.");
-        }
-
-        public void ResumeAll() {
-            foreach (var n in _activeNodes)
-                n.Resume();
-            SeqLogger.Info("All active nodes resumed.");
+#endif
         }
     }
 }

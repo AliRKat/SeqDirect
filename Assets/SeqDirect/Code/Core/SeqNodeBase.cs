@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using SeqDirect.Core.Graph;
+
 #if DOTWEEN_PRESENT
 using DG.Tweening;
 #endif
 
 namespace SeqDirect.Core {
-    /// <summary>
-    /// Base class for all nodes in SeqDirect. Nodes create and manage their own tweens.
-    /// Provides lifecycle control (Play, Pause, Kill, Loop).
-    /// </summary>
     [Serializable]
     public abstract class SeqNodeBase<TData> : ISeqNode where TData : SeqNodeParams, new() {
         [SerializeField] protected string nodeLabel;
@@ -17,6 +15,7 @@ namespace SeqDirect.Core {
 
 #if DOTWEEN_PRESENT
         protected readonly List<Tween> activeTweens = new();
+        public IReadOnlyList<Tween> GetActiveTweens() => activeTweens;
 #endif
 
         public string NodeLabel => nodeLabel;
@@ -24,21 +23,15 @@ namespace SeqDirect.Core {
         SeqNodeParams ISeqNode.Params => data;
         public abstract float Duration { get; }
 
-        /// <summary>
-        /// Builds a DOTween tween for the given transform without playing it.
-        /// </summary>
         protected abstract Tween BuildTween(Transform target);
 
-        /// <summary>
-        /// Executes the node by building and playing tweens for all targets.
-        /// </summary>
         public virtual void Execute(List<Transform> targets) {
 #if !DOTWEEN_PRESENT
             SeqLogger.DependencyMissing("DOTween", nodeLabel);
             return;
 #endif
             SeqLogger.NodeExecution(nodeLabel, data.delay + Duration);
-            Kill(); // clear previous tweens
+            Kill();
 
             foreach (var t in targets) {
                 if (t == null) continue;
@@ -81,14 +74,31 @@ namespace SeqDirect.Core {
             copy.data = JsonUtility.FromJson<TData>(JsonUtility.ToJson(data));
             return copy;
         }
+
+        /// <summary>
+        /// Applies graph overrides (delay, duration, custom values) to this node's params.
+        /// </summary>
+        public virtual void ApplyGraphOverrides(SeqGraphNodeData nodeData) {
+            if (nodeData == null) return;
+
+            data.delay = nodeData.delay;
+            data.waitForCompletion = nodeData.waitForCompletion;
+
+            // duration override (if exists in this TData)
+            var durField = typeof(TData).GetField("duration");
+            if (durField != null && durField.FieldType == typeof(float))
+                durField.SetValue(data, nodeData.duration);
+
+            // customValue override (e.g. scale, alpha etc.)
+            var customField = typeof(TData).GetField("customValue");
+            if (customField != null && customField.FieldType == typeof(float))
+                customField.SetValue(data, nodeData.customValue);
+        }
     }
 
-    /// <summary>
-    /// Serializable parameter container for nodes. Includes delay, wait, and loop settings.
-    /// </summary>
     [Serializable]
     public class SeqNodeParams {
-        [Tooltip("Optional delay before node executes (in seconds)." )]
+        [Tooltip("Optional delay before node executes (in seconds).")]
         public float delay;
 
         [Tooltip("If true, the next node will wait for this to finish.")]
@@ -100,18 +110,12 @@ namespace SeqDirect.Core {
         [Tooltip("DOTween loop type.")]
         public LoopType loopType = LoopType.Restart;
 
-        /// <summary>
-        /// Utility clone using JSON serialization.
-        /// </summary>
         public virtual SeqNodeParams Clone() {
             var json = JsonUtility.ToJson(this);
             return JsonUtility.FromJson<SeqNodeParams>(json);
         }
     }
 
-    /// <summary>
-    /// Common surface for all nodes (runtime interface).
-    /// </summary>
     public interface ISeqNode {
         string NodeLabel { get; }
         float Duration { get; }

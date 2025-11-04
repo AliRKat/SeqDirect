@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5638243d2ed8313449b00a4a4aad0dd3, type: 3}
+  m_Name: IntroSequence
+  m_EditorClassIdentifier: 
+  graphId: IntroSequence
+  graphName: New Sequence
+  nodes:
+  - id: 31f50af0-566c-485e-9a82-901438390584
+    nodeType: 9
+    position: {x: 69, y: 250}
+    duration: 0
+    waitForCompletion: 1
+    delay: 0
+    customValue: 10
+    serializedParams: '{}'
+  - id: af123959-dd14-41ff-992f-3e4b797840f6
+    nodeType: 10
+    position: {x: 644, y: 250}
+    duration: 0
+    waitForCompletion: 1
+    delay: 0
+    customValue: 0.1
+    serializedParams: '{}'
+  - id: d137198e-f234-4a8e-bcfa-c5aaedda803b
+    nodeType: 2
+    position: {x: 364, y: 250}
+    duration: 0
+    waitForCompletion: 1
+    delay: 0
+    customValue: 1
+    serializedParams: '{}'
+  connections:
+  - fromNodeId: 31f50af0-566c-485e-9a82-901438390584
+    toNodeId: d137198e-f234-4a8e-bcfa-c5aaedda803b
+  - fromNodeId: d137198e-f234-4a8e-bcfa-c5aaedda803b
+    toNodeId: af123959-dd14-41ff-992f-3e4b797840f6
