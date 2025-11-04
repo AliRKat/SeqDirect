@@ -4,13 +4,13 @@ using DG.Tweening;
 #endif
 
 namespace SeqDirect.Core.Nodes {
-    [SeqNode("FadeOut", Category = "UI", Description = "Fades out UI elements or CanvasGroups.")]
-    public class SeqNode_FadeOut : SeqNodeBase<FadeOutParams> {
+    [SeqNode("FadeIn", Category = "UI", Description = "Fades in UI elements or CanvasGroups.")]
+    public class SeqNode_FadeIn : SeqNodeBase<FadeInParams> {
         public override float Duration => data.duration;
 
         protected override Tween BuildTween(Transform t) {
 #if !DOTWEEN_PRESENT
-            SeqLogger.DependencyMissing("DOTween", "FadeOut");
+            SeqLogger.DependencyMissing("DOTween", "FadeIn");
             return null;
 #endif
             if (t == null) return null;
@@ -28,9 +28,9 @@ namespace SeqDirect.Core.Nodes {
     }
 
     [System.Serializable]
-    public class FadeOutParams : SeqNodeParams {
+    public class FadeInParams : SeqNodeParams {
         public float duration = 0.5f;
-        [Range(0, 1)] public float targetAlpha = 0f;
+        [Range(0, 1)] public float targetAlpha = 1f;
         public Ease ease = Ease.OutQuad;
     }
 }
